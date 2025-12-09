@@ -1,39 +1,44 @@
 import datetime
+import os
 
 OUTPUT_FILE = "news_feed.txt"
+DEFAULT_INPUT_FOLDER = "input/"
 
 
+# ==========================================================
+#                     BASE PUBLICATION
+# ==========================================================
 class Publication:
-    """Base class for all publication types."""
-
     def __init__(self, text):
         self.text = text
 
     def format(self):
-        """Override in child classes."""
-        raise NotImplementedError("format() must be implemented in subclasses")
+        raise NotImplementedError
 
     def publish(self):
-        """Writes formatted record to file."""
-        with open(OUTPUT_FILE, "a", encoding="utf-8") as file:
-            file.write(self.format() + "\n\n")
-        print("Record saved.")
+        with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
+            f.write(self.format() + "\n\n")
+        print("✔ Record saved.")
 
 
+# ==========================================================
+#                          NEWS
+# ==========================================================
 class News(Publication):
     def __init__(self, text, city):
         super().__init__(text)
         self.city = city
-        self.publish_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        self.date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     def format(self):
-        return (
-            "News -----------------------------\n"
-            f"{self.text}\n"
-            f"{self.city}, {self.publish_date}"
-        )
+        return (f"News -----------------------------\n"
+                f"{self.text}\n"
+                f"{self.city}, {self.date}")
 
 
+# ==========================================================
+#                      PRIVATE AD
+# ==========================================================
 class PrivateAd(Publication):
     def __init__(self, text, expiration_date):
         super().__init__(text)
@@ -41,87 +46,143 @@ class PrivateAd(Publication):
         self.days_left = (self.expiration_date - datetime.datetime.now()).days
 
     def format(self):
-        return (
-            "Private Ad -----------------------\n"
-            f"{self.text}\n"
-            f"Expires: {self.expiration_date.date()}, "
-            f"Days left: {self.days_left}"
-        )
+        return (f"Private Ad -----------------------\n"
+                f"{self.text}\n"
+                f"Expires: {self.expiration_date.date()}, "
+                f"Days left: {self.days_left}")
 
 
+# ==========================================================
+#                   CUSTOM: WEATHER FORECAST
+# ==========================================================
 class WeatherForecast(Publication):
-    """
-    Unique custom publication type:
-    Inputs: city, temperature
-    Adds: mood-based weather interpretation rule
-    """
-
-    def __init__(self, city, temperature):
+    def __init__(self, city, temp):
         super().__init__(text=None)
         self.city = city
-        self.temperature = temperature
+        self.temp = float(temp)
         self.date = datetime.datetime.now().strftime("%Y-%m-%d")
 
     def _interpret(self):
-        if self.temperature > 25:
+        if self.temp > 25:
             return "Hot and sunny"
-        elif 10 <= self.temperature <= 25:
+        if 10 <= self.temp <= 25:
             return "Mild and pleasant"
-        else:
-            return "Cold weather ahead"
+        return "Cold weather ahead"
 
     def format(self):
-        return (
-            "Weather Forecast -----------------\n"
-            f"City: {self.city}\n"
-            f"Temperature: {self.temperature}°C\n"
-            f"Forecast: {self._interpret()}\n"
-            f"Date: {self.date}"
-        )
+        return (f"Weather Forecast -----------------\n"
+                f"City: {self.city}\n"
+                f"Temperature: {self.temp}°C\n"
+                f"Forecast: {self._interpret()}\n"
+                f"Date: {self.date}")
 
 
+# ==========================================================
+#                   FACTORY FOR PUBLICATIONS
+# ==========================================================
 class PublicationFactory:
-    """Handles creation of publications based on user selection."""
-
     @staticmethod
-    def create_publication():
+    def create_manual():
         print("\nChoose publication type:")
         print("1 – News")
         print("2 – Private Ad")
-        print("3 – Weather Forecast (unique type)")
+        print("3 – Weather Forecast")
 
-        choice = input("Enter choice (1/2/3): ")
+        option = input("Enter choice (1/2/3): ")
+
+        if option == "1":
+            return News(input("Text: "), input("City: "))
+        elif option == "2":
+            return PrivateAd(input("Text: "), input("Expiration date YYYY-MM-DD: "))
+        elif option == "3":
+            return WeatherForecast(input("City: "), input("Temperature: "))
+        else:
+            print("Invalid choice.")
+            return None
+
+    @staticmethod
+    def create_from_file(tokens):
+        """Tokens is the list split by '|'."""
+        record_type = tokens[0].strip().lower()
+
+        if record_type == "news":
+            return News(tokens[1].strip(), tokens[2].strip())
+
+        elif record_type == "ad":
+            return PrivateAd(tokens[1].strip(), tokens[2].strip())
+
+        elif record_type == "weather":
+            return WeatherForecast(tokens[1].strip(), tokens[2].strip())
+
+        else:
+            raise ValueError(f"Unknown record type: {record_type}")
+
+
+# ==========================================================
+#                   FILE PROCESSOR CLASS
+# ==========================================================
+class FileProcessor:
+    def __init__(self, path=None):
+        self.path = path or self._get_default_file()
+        print(f"Processing file: {self.path}")
+
+    @staticmethod
+    def _get_default_file():
+        files = os.listdir(DEFAULT_INPUT_FOLDER)
+        if not files:
+            raise FileNotFoundError("No files in input folder.")
+        return os.path.join(DEFAULT_INPUT_FOLDER, files[0])
+
+    def process(self):
+        records = []
+
+        with open(self.path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    tokens = line.split("|")
+                    pub = PublicationFactory.create_from_file(tokens)
+                    records.append(pub)
+
+        # Publish all parsed records
+        for record in records:
+            record.publish()
+
+        # Remove the file after processing
+        os.remove(self.path)
+        print(f"✔ File processed and removed: {self.path}")
+
+
+# ==========================================================
+#                           MAIN
+# ==========================================================
+def main():
+    print("=== News Feed Tool Extended ===")
+
+    while True:
+        print("\nSelect input mode:")
+        print("1 – Manual input")
+        print("2 – Load from file")
+
+        choice = input("Enter 1 or 2: ")
 
         if choice == "1":
-            text = input("Enter news text: ")
-            city = input("Enter city: ")
-            return News(text, city)
+            record = PublicationFactory.create_manual()
+            if record:
+                record.publish()
 
         elif choice == "2":
-            text = input("Enter ad text: ")
-            expiration_date = input("Enter expiration date (YYYY-MM-DD): ")
-            return PrivateAd(text, expiration_date)
-
-        elif choice == "3":
-            city = input("Enter city: ")
-            temp = float(input("Enter temperature (°C): "))
-            return WeatherForecast(city, temp)
+            try:
+                custom_path = input("Enter file path or press Enter for default: ")
+                fp = FileProcessor(custom_path if custom_path else None)
+                fp.process()
+            except Exception as e:
+                print("Error:", e)
 
         else:
             print("Invalid option.")
-            return None
 
-
-def main():
-    print("=== USER GENERATED NEWS FEED TOOL ===")
-    while True:
-        record = PublicationFactory.create_publication()
-        if record:
-            record.publish()
-
-        again = input("Add another record? (y/n): ").lower()
+        again = input("Add more? (y/n): ").lower()
         if again != "y":
-            print("Program finished. File saved:", OUTPUT_FILE)
             break
 
 
